@@ -45,7 +45,11 @@ endif
 # Update targets.
 .PHONY: update-gomod
 update-gomod:
-	go get -t -v -d -u ./...
+	go get -t -v -u ./...
+
+	# Static pins
+	go get github.com/canonical/lxd@stable-5.21 # Stay on v2 dqlite and LXD LTS client
+
 	go mod tidy -go=$(GOMIN)
 
 # Update lxd-generate generated database helpers.

@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -117,10 +116,7 @@ func (t *hooksSuite) Test_hooks() {
 		ranHook = ""
 		isForce = false
 		expectForce := false
-		req := &http.Request{
-			// Set an URL for response.Render to not cause any panic.
-			URL: &url.URL{},
-		}
+		req := &http.Request{}
 		payload, ok := c.req.(internalTypes.HookRemoveMemberOptions)
 		if !ok {
 			payload, ok := c.req.(internalTypes.HookNewMemberOptions)
@@ -135,7 +131,7 @@ func (t *hooksSuite) Test_hooks() {
 
 		response := hooksPost(s, req)
 		recorder := httptest.NewRecorder()
-		err := response.Render(recorder, req)
+		err := response.Render(recorder)
 		require.NoError(t.T(), err)
 
 		var resp api.Response
