@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/canonical/go-dqlite/v2/driver"
 	"github.com/canonical/lxd/lxd/db/schema"
 	"github.com/canonical/lxd/lxd/request"
 	"github.com/canonical/lxd/lxd/response"
@@ -20,6 +21,7 @@ import (
 	"github.com/canonical/lxd/shared/logger"
 	"github.com/canonical/lxd/shared/revert"
 	"github.com/gorilla/mux"
+	"github.com/mattn/go-sqlite3"
 
 	"github.com/canonical/microcluster/v2/client"
 	"github.com/canonical/microcluster/v2/cluster"
@@ -236,6 +238,15 @@ func (d *Daemon) Run(ctx context.Context, stateDir string, args Args) error {
 
 func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterval time.Duration, schemaExtensions []schema.Update, apiExtensions []string, hooks *state.Hooks) error {
 	d.applyHooks(hooks)
+
+	// Register smart error mappings.
+	// Those need to be set proactively as they aren't anymore set by default.
+	// See https://github.com/canonical/lxd/pull/14408.
+	// Always set debug to false as this is the same behavior as if the mappings got registered in the upstream package.
+	response.Init(false, map[int][]error{
+		http.StatusConflict:           {sqlite3.ErrConstraintUnique},
+		http.StatusServiceUnavailable: {driver.ErrNoAvailableLeader},
+	})
 
 	var err error
 	name, err := os.Hostname()
