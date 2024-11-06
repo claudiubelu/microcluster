@@ -45,7 +45,7 @@ endif
 # Update targets.
 .PHONY: update-gomod
 update-gomod:
-	go get -t -v -d -u ./...
+	go get -t -v -u ./...
 	go mod tidy -go=$(GOMIN)
 
 # Update lxd-generate generated database helpers.
