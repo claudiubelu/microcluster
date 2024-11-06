@@ -6,8 +6,8 @@ github.com/bmatcuk/doublestar/v4 v4.7.1 h1:fdDeAqgT47acgwd9bd9HxJRDmc9UAmPpc+2m0
 github.com/bmatcuk/doublestar/v4 v4.7.1/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/canonical/go-dqlite/v2 v2.0.0 h1:RNFcFVhHMh70muKKErbW35rSzqmAFswheHdAgxW0Ddw=
 github.com/canonical/go-dqlite/v2 v2.0.0/go.mod h1:IaIC8u4Z1UmPjuAqPzA2r83YMaMHRLoKZdHKI5uHCJI=
-github.com/canonical/lxd v0.0.0-20241105095730-921967798cb1 h1:kJTKpOZlC3dDx0YAMGMlV4D7i/7YLz9p4uEVuMXk1uM=
-github.com/canonical/lxd v0.0.0-20241105095730-921967798cb1/go.mod h1:ORoLmeSj+tQmUgh10kLA9eMtRnbBZPT6X10V2I4cTGs=
+github.com/canonical/lxd v0.0.0-20241106123323-f0be5c8f36a6 h1:dr4LtQbdutkhfxVCGH/jcVpaLxK6067dNCE6tp3Isyw=
+github.com/canonical/lxd v0.0.0-20241106123323-f0be5c8f36a6/go.mod h1:ORoLmeSj+tQmUgh10kLA9eMtRnbBZPT6X10V2I4cTGs=
 github.com/cpuguy83/go-md2man/v2 v2.0.4/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
