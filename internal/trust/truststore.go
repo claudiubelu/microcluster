@@ -45,7 +45,7 @@ func Init(watcher *sys.Watcher, onUpdate func(oldRemotes, newRemotes Remotes) er
 	}
 
 	// Watch on the truststore directory for yaml updates.
-	watcher.Watch(dir, "yaml", func(path string, event fsnotify.Op) error {
+	watcher.Watch(dir, ".yaml", func(path string, event fsnotify.Op) error {
 		return ts.refresh(path)
 	})
 
