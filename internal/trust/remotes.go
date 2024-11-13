@@ -154,7 +154,7 @@ func (r *Remotes) Replace(dir string, newRemotes ...types.ClusterMember) error {
 			return fmt.Errorf("Failed to parse remote %q to yaml: %w", remote.Name, err)
 		}
 
-		remotePath := filepath.Join(dir, fmt.Sprintf("%s.yaml", remote.Name))
+		remotePath := filepath.Join(dir, filepath.Base(remote.Name+".yaml"))
 		err = renameio.WriteFile(remotePath, bytes, 0644)
 		if err != nil {
 			return fmt.Errorf("Failed to write %q: %w", remotePath, err)
@@ -174,7 +174,7 @@ func (r *Remotes) Replace(dir string, newRemotes ...types.ClusterMember) error {
 		_, ok := remoteData[name]
 
 		if !ok {
-			remotePath := filepath.Join(dir, fmt.Sprintf("%s.yaml", name))
+			remotePath := filepath.Join(dir, filepath.Base(entry.Name()))
 			err = os.Remove(remotePath)
 			if err != nil {
 				return err
