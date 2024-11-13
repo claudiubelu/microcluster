@@ -107,7 +107,7 @@ func (r *Remotes) Add(dir string, remotes ...Remote) error {
 			return fmt.Errorf("Failed to parse remote %q to yaml: %w", remote.Name, err)
 		}
 
-		path := filepath.Join(dir, fmt.Sprintf("%s.yaml", remote.Name))
+		path := filepath.Join(dir, filepath.Base(remote.Name+".yaml"))
 		_, err = os.Stat(path)
 		if err == nil {
 			return fmt.Errorf("Remote at %q already exists", path)
