@@ -170,7 +170,11 @@ func (r *Remotes) Replace(dir string, newRemotes ...types.ClusterMember) error {
 
 	// Remove any outdated entries.
 	for _, entry := range allEntries {
-		name, _, _ := strings.Cut(entry.Name(), ".yaml")
+		name, found := strings.CutSuffix(entry.Name(), ".yaml")
+		if !found {
+			continue
+		}
+
 		_, ok := remoteData[name]
 
 		if !ok {
