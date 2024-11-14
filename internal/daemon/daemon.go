@@ -370,10 +370,12 @@ func (d *Daemon) applyHooks(hooks *state.Hooks) error {
 	}
 
 	// PreBootstrap is deprecated and replaced by PreInit, so unset it if PreInit is set.
+	// nolint:staticcheck
 	if d.hooks.PreInit != nil && d.hooks.PreBootstrap != nil {
 		return fmt.Errorf("PreBootstrap hook is deprecated and cannot be defined if PreInit hook is defined")
 	}
 
+	// nolint:staticcheck
 	if d.hooks.PreBootstrap == nil {
 		d.hooks.PreBootstrap = noOpInitHook
 	}
@@ -529,6 +531,7 @@ func (d *Daemon) setConfig(newConfig trust.Location) error {
 func (d *Daemon) StartAPI(ctx context.Context, bootstrap bool, initConfig map[string]string, joinAddresses ...string) error {
 	if bootstrap {
 		ctx, cancel := context.WithCancel(ctx)
+		// nolint:staticcheck
 		err := d.hooks.PreBootstrap(ctx, d.State(), initConfig)
 		cancel()
 		if err != nil {
