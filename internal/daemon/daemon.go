@@ -237,7 +237,10 @@ func (d *Daemon) Run(ctx context.Context, stateDir string, args Args) error {
 }
 
 func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterval time.Duration, schemaExtensions []schema.Update, apiExtensions []string, hooks *state.Hooks) error {
-	d.applyHooks(hooks)
+	err := d.applyHooks(hooks)
+	if err != nil {
+		return err
+	}
 
 	// Register smart error mappings.
 	// Those need to be set proactively as they aren't anymore set by default.
@@ -248,7 +251,6 @@ func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterva
 		http.StatusServiceUnavailable: {driver.ErrNoAvailableLeader},
 	})
 
-	var err error
 	name, err := os.Hostname()
 	if err != nil {
 		return fmt.Errorf("Failed to assign default system name: %w", err)
@@ -350,7 +352,7 @@ func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterva
 	return nil
 }
 
-func (d *Daemon) applyHooks(hooks *state.Hooks) {
+func (d *Daemon) applyHooks(hooks *state.Hooks) error {
 	// Apply a no-op hooks for any missing hooks.
 	noOpHook := func(ctx context.Context, s state.State) error { return nil }
 	noOpRemoveHook := func(ctx context.Context, s state.State, force bool) error { return nil }
@@ -365,6 +367,11 @@ func (d *Daemon) applyHooks(hooks *state.Hooks) {
 		d.hooks = state.Hooks{}
 	} else {
 		d.hooks = *hooks
+	}
+
+	// PreBootstrap is deprecated and replaced by PreInit, so unset it if PreInit is set.
+	if d.hooks.PreInit != nil && d.hooks.PreBootstrap != nil {
+		return fmt.Errorf("PreBootstrap hook is deprecated and cannot be defined if PreInit hook is defined")
 	}
 
 	if d.hooks.PreBootstrap == nil {
@@ -410,6 +417,8 @@ func (d *Daemon) applyHooks(hooks *state.Hooks) {
 	if d.hooks.OnDaemonConfigUpdate == nil {
 		d.hooks.OnDaemonConfigUpdate = noOpConfigHook
 	}
+
+	return nil
 }
 
 func (d *Daemon) reloadIfBootstrapped() error {

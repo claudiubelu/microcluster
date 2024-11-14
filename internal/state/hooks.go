@@ -10,6 +10,8 @@ import (
 // integrate with other tools.
 type Hooks struct {
 	// PreBootstrap is run before the daemon is initialized and bootstrapped.
+	//
+	// Deprecated: Use PreInit instead.
 	PreBootstrap func(ctx context.Context, s State, initConfig map[string]string) error
 
 	// PreInit is run before the daemon is initialized.
