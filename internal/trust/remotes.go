@@ -107,7 +107,7 @@ func (r *Remotes) Add(dir string, remotes ...Remote) error {
 			return fmt.Errorf("Failed to parse remote %q to yaml: %w", remote.Name, err)
 		}
 
-		path := filepath.Join(dir, fmt.Sprintf("%s.yaml", remote.Name))
+		path := filepath.Join(dir, filepath.Base(remote.Name+".yaml"))
 		_, err = os.Stat(path)
 		if err == nil {
 			return fmt.Errorf("Remote at %q already exists", path)
@@ -154,7 +154,7 @@ func (r *Remotes) Replace(dir string, newRemotes ...types.ClusterMember) error {
 			return fmt.Errorf("Failed to parse remote %q to yaml: %w", remote.Name, err)
 		}
 
-		remotePath := filepath.Join(dir, fmt.Sprintf("%s.yaml", remote.Name))
+		remotePath := filepath.Join(dir, filepath.Base(remote.Name+".yaml"))
 		err = renameio.WriteFile(remotePath, bytes, 0644)
 		if err != nil {
 			return fmt.Errorf("Failed to write %q: %w", remotePath, err)
@@ -170,11 +170,15 @@ func (r *Remotes) Replace(dir string, newRemotes ...types.ClusterMember) error {
 
 	// Remove any outdated entries.
 	for _, entry := range allEntries {
-		name, _, _ := strings.Cut(entry.Name(), ".yaml")
+		name, found := strings.CutSuffix(entry.Name(), ".yaml")
+		if !found {
+			continue
+		}
+
 		_, ok := remoteData[name]
 
 		if !ok {
-			remotePath := filepath.Join(dir, fmt.Sprintf("%s.yaml", name))
+			remotePath := filepath.Join(dir, filepath.Base(entry.Name()))
 			err = os.Remove(remotePath)
 			if err != nil {
 				return err
