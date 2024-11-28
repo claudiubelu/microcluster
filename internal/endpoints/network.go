@@ -2,11 +2,13 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/canonical/lxd/lxd/endpoints/listeners"
 	"github.com/canonical/lxd/lxd/util"
@@ -27,10 +29,12 @@ type Network struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	drainConnectionsTimeout time.Duration
 }
 
 // NewNetwork assigns an address, certificate, and server to the Network.
-func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Server, address api.URL, cert *shared.CertInfo) *Network {
+func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Server, address api.URL, cert *shared.CertInfo, drainConnTimeout time.Duration) *Network {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &Network{
@@ -41,6 +45,8 @@ func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Ser
 		server: server,
 		ctx:    ctx,
 		cancel: cancel,
+
+		drainConnectionsTimeout: drainConnTimeout,
 	}
 }
 
@@ -108,27 +114,39 @@ func (n *Network) Serve() {
 		case <-n.ctx.Done():
 			logger.Infof("Received shutdown signal - aborting https socket server startup")
 		default:
+			// server.Serve always returns a non-nil error.
+			// http.ErrServerClosed is returned after server.Shutdown or server.Close.
+			// net.ErrClosed is returned if the listener is closed.
 			err := n.server.Serve(n.listener)
-			if err != nil {
-				select {
-				case <-n.ctx.Done():
-					logger.Infof("Received shutdown signal - aborting https socket server startup")
-				default:
-					logger.Error("Failed to start server", logger.Ctx{"err": err})
-				}
+			if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+				logger.Infof("Received shutdown signal - stopped serving https socket listener")
+			} else {
+				logger.Error("Failed to start server", logger.Ctx{"err": err})
 			}
 		}
 	}()
 }
 
-// Close the listener.
+// Close the listener and server.
+// Will attempt to close the server gracefully, if configured with a drain connections timeout.
+// Note that graceful shutdown will timeout if the connections do not finish (e.g.: a request caused the server
+// to Close the endpoints on the same goroutine).
 func (n *Network) Close() error {
 	if n.listener == nil {
 		return nil
 	}
 
 	logger.Info("Stopping REST API handler - closing https socket", logger.Ctx{"address": n.listener.Addr()})
-	n.cancel()
+	defer n.cancel()
 
-	return n.listener.Close()
+	// n.listener.Close() will mean that we'll no longer accept connections.
+	// It does not shutdown the server, or its currently accepted connections.
+	// We need to shut this down separately, as the listener is not passed to the server
+	// if n.Serve() is not called.
+	err := n.listener.Close()
+	if err != nil {
+		return err
+	}
+
+	return shutdownServer(n.server, n.drainConnectionsTimeout)
 }

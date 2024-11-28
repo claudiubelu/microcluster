@@ -2,12 +2,14 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
+	"time"
 
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
@@ -24,10 +26,12 @@ type Socket struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	drainConnectionsTimeout time.Duration
 }
 
 // NewSocket returns a Socket struct with no listener attached yet.
-func NewSocket(ctx context.Context, server *http.Server, path api.URL, group string) *Socket {
+func NewSocket(ctx context.Context, server *http.Server, path api.URL, group string, drainConnTimeout time.Duration) *Socket {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Socket{
 		Path:  path.Hostname(),
@@ -36,6 +40,8 @@ func NewSocket(ctx context.Context, server *http.Server, path api.URL, group str
 		server: server,
 		ctx:    ctx,
 		cancel: cancel,
+
+		drainConnectionsTimeout: drainConnTimeout,
 	}
 }
 
@@ -93,29 +99,41 @@ func (s *Socket) Serve() {
 		case <-s.ctx.Done():
 			logger.Infof("Received shutdown signal - aborting unix socket server startup")
 		default:
+			// server.Serve always returns a non-nil error.
+			// http.ErrServerClosed is returned after server.Shutdown or server.Close.
+			// net.ErrClosed is returned if the listener is closed.
 			err := s.server.Serve(s.listener)
-			if err != nil {
-				select {
-				case <-s.ctx.Done():
-					logger.Infof("Received shutdown signal - aborting unix socket server startup")
-				default:
-					logger.Error("Failed to start server", logger.Ctx{"err": err})
-				}
+			if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+				logger.Infof("Received shutdown signal - stopped serving unix socket listener")
+			} else {
+				logger.Error("Failed to start server", logger.Ctx{"err": err})
 			}
 		}
 	}()
 }
 
-// Close the Socket's listener.
+// Close the listener and server.
+// Will attempt to close the server gracefully, if configured with a drain connections timeout.
+// Note that graceful shutdown will timeout if the connections do not finish (e.g.: a request caused the server
+// to Close the endpoints on the same goroutine).
 func (s *Socket) Close() error {
 	if s.listener == nil {
 		return nil
 	}
 
 	logger.Info("Stopping REST API handler - closing socket", logger.Ctx{"socket": s.listener.Addr()})
-	s.cancel()
+	defer s.cancel()
 
-	return s.listener.Close()
+	// s.listener.Close() will mean that we'll no longer accept connections.
+	// It does not shutdown the server, or its currently accepted connections.
+	// We need to shut this down separately, as the listener is not passed to the server
+	// if s.Serve() is not called.
+	err := s.listener.Close()
+	if err != nil {
+		return err
+	}
+
+	return shutdownServer(s.server, s.drainConnectionsTimeout)
 }
 
 // Remove any stale socket file at the given path.
