@@ -73,7 +73,19 @@ func controlPost(state state.State, r *http.Request) response.Response {
 	}
 
 	reverter := revert.New()
-	defer reverter.Fail()
+	defer func() {
+		// NOTE(claudiub): In the case we fail to bootstrap / join the cluster, we'll be resetting a few
+		// things, including the cluster membership. This includes the HTTPS and unix socket servers we have
+		// open by closing them.
+		// However, we cannot gracefully shutdown the servers, as there's at least one connection that is
+		// still open: the bootstrap / join request. Forcing the connection to close before we're able
+		// to write the request response will result in the client getting an EOF error, and no information
+		// regarding the failure.
+		// Running the revert actions in a goroutine will address this issue: while the revert happens,
+		// we'll be able to return and write the HTTP response and then close the connection, finally
+		// allowing the Servers to gracefully shutdown, and the clients to be happy.
+		go reverter.Fail()
+	}()
 
 	serverCert, err := state.ServerCert().PublicKeyX509()
 	if err != nil {
