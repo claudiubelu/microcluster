@@ -357,11 +357,6 @@ func resetClusterMember(ctx context.Context, s state.State, force bool) (reExec 
 		return nil, fmt.Errorf("Failed shutting down database: %w", err)
 	}
 
-	err = intState.StopListeners()
-	if err != nil && !force {
-		return nil, fmt.Errorf("Failed shutting down listeners: %w", err)
-	}
-
 	err = os.RemoveAll(s.FileSystem().StateDir)
 	if err != nil && !force {
 		return nil, fmt.Errorf("Failed to remove the s directory: %w", err)
@@ -369,6 +364,21 @@ func resetClusterMember(ctx context.Context, s state.State, force bool) (reExec 
 
 	reExec = func() {
 		<-ctx.Done() // Wait until request has finished.
+
+		// NOTE(claudiub): In the case we fail to bootstrap / join the cluster, or if we remove the node
+		// from the cluster, we'll be resetting the node's cluster membership. This includes closing the
+		// HTTPS and unix socket servers we have open.
+		// However, we cannot gracefully shutdown the servers, as there's at least one connection that is
+		// still open: the bootstrap / join request. Forcing the connection to close before we're able
+		// to write the request response will result in the client getting an EOF error, and no information
+		// regarding the failure.
+		// Gracefully shutting down the servers in a goroutine will address this issue: while this action
+		// happens, we'll be able to write the HTTP response and then close the connection, finally
+		// allowing the servers to gracefully shutdown, and the clients to be happy.
+		err = intState.StopListeners()
+		if err != nil && !force {
+			logger.Error("Failed shutting down listeners", logger.Ctx{"err": err})
+		}
 
 		// Wait until we can acquire the lock. This way if another request is holding the lock we won't
 		// replace/stop the LXD daemon until that request has finished.
