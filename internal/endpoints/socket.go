@@ -98,6 +98,9 @@ func (s *Socket) Serve() {
 				select {
 				case <-s.ctx.Done():
 					logger.Infof("Received shutdown signal - aborting unix socket server startup")
+					if err := s.server.Shutdown(context.Background()); err != nil {
+						logger.Error("Failed to shutdown server", logger.Ctx{"err": err})
+					}
 				default:
 					logger.Error("Failed to start server", logger.Ctx{"err": err})
 				}

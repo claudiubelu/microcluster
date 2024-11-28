@@ -113,6 +113,9 @@ func (n *Network) Serve() {
 				select {
 				case <-n.ctx.Done():
 					logger.Infof("Received shutdown signal - aborting https socket server startup")
+					if err := n.server.Shutdown(context.Background()); err != nil {
+						logger.Error("Failed to shutdown server", logger.Ctx{"err": err})
+					}
 				default:
 					logger.Error("Failed to start server", logger.Ctx{"err": err})
 				}
