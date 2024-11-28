@@ -2,12 +2,15 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/api"
@@ -24,10 +27,12 @@ type Socket struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	drainConnectionsTimeout time.Duration
 }
 
 // NewSocket returns a Socket struct with no listener attached yet.
-func NewSocket(ctx context.Context, server *http.Server, path api.URL, group string) *Socket {
+func NewSocket(ctx context.Context, server *http.Server, path api.URL, group string, drainConnTimeout time.Duration) *Socket {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Socket{
 		Path:  path.Hostname(),
@@ -36,6 +41,8 @@ func NewSocket(ctx context.Context, server *http.Server, path api.URL, group str
 		server: server,
 		ctx:    ctx,
 		cancel: cancel,
+
+		drainConnectionsTimeout: drainConnTimeout,
 	}
 }
 
@@ -115,7 +122,32 @@ func (s *Socket) Close() error {
 	logger.Info("Stopping REST API handler - closing socket", logger.Ctx{"socket": s.listener.Addr()})
 	s.cancel()
 
-	return s.listener.Close()
+	// .Close() will mean that we'll no longer accept connections.
+	if err := s.listener.Close(); err != nil {
+		return err
+	}
+
+	// Configured not to drain connections. Close them.
+	if s.drainConnectionsTimeout == 0 {
+		err := s.server.Close()
+		if errors.Is(err, syscall.EINVAL) {
+			return nil
+		}
+		return err
+	}
+
+	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
+	cctx, cancel := context.WithTimeout(context.Background(), s.drainConnectionsTimeout)
+	defer cancel()
+	if err := s.server.Shutdown(cctx); err != nil {
+		logger.Error("Failed to gracefully shutdown socket server", logger.Ctx{"err": err})
+		if closeErr := s.server.Close(); closeErr != nil {
+			logger.Error("Failed to close socket server", logger.Ctx{"err": closeErr})
+			return fmt.Errorf("Encountered error while closing socket server: %w, after failing to gracefully shutdown the server: %w", closeErr, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // Remove any stale socket file at the given path.

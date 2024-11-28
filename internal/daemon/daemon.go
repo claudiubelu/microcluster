@@ -69,6 +69,10 @@ type Args struct {
 
 	// Each rest.Server will be initialized and managed by microcluster.
 	ExtensionServers map[string]rest.Server
+
+	// DrainConnectionsTimeout is the amount of time to allow for all core server connections to drain when shutting down.
+	// If it's 0, the connections are not drained when shutting down.
+	DrainConnectionsTimeout time.Duration
 }
 
 // Daemon holds information for the microcluster daemon.
@@ -104,6 +108,8 @@ type Daemon struct {
 
 	extensionServersMu sync.RWMutex
 	extensionServers   map[string]rest.Server
+
+	drainConnectionsTimeout time.Duration
 }
 
 // NewDaemon initializes the Daemon context and channels.
@@ -172,6 +178,7 @@ func (d *Daemon) Run(ctx context.Context, stateDir string, args Args) error {
 	}
 
 	d.version = args.Version
+	d.drainConnectionsTimeout = args.DrainConnectionsTimeout
 
 	// Setup the deamon's internal config.
 	d.config = internalConfig.NewDaemonConfig(filepath.Join(d.os.StateDir, "daemon.yaml"))
@@ -793,7 +800,7 @@ func (d *Daemon) UpdateServers() error {
 // startUnixServer starts up the core unix listener with the given resources.
 func (d *Daemon) startUnixServer(serverEndpoints []rest.Resources, socketGroup string) error {
 	ctlServer := d.initServer(serverEndpoints...)
-	ctl := endpoints.NewSocket(d.shutdownCtx, ctlServer, d.os.ControlSocket(), socketGroup)
+	ctl := endpoints.NewSocket(d.shutdownCtx, ctlServer, d.os.ControlSocket(), socketGroup, d.drainConnectionsTimeout)
 	d.endpoints = endpoints.NewEndpoints(d.shutdownCtx, map[string]endpoints.Endpoint{
 		endpoints.EndpointsUnix: ctl,
 	})
@@ -826,7 +833,7 @@ func (d *Daemon) addCoreServers(preInit bool, defaultURL api.URL, defaultCert *s
 	d.extensionServersMu.RUnlock()
 
 	server := d.initServer(serverEndpoints...)
-	network := endpoints.NewNetwork(d.shutdownCtx, endpoints.EndpointNetwork, server, defaultURL, defaultCert)
+	network := endpoints.NewNetwork(d.shutdownCtx, endpoints.EndpointNetwork, server, defaultURL, defaultCert, d.drainConnectionsTimeout)
 
 	return d.endpoints.Add(map[string]endpoints.Endpoint{
 		endpoints.EndpointsCore: network,
@@ -892,7 +899,7 @@ func (d *Daemon) addExtensionServers(preInit bool, fallbackCert *shared.CertInfo
 		}
 
 		server := d.initServer(extensionServer.Resources...)
-		network := endpoints.NewNetwork(d.shutdownCtx, endpoints.EndpointNetwork, server, *url, cert)
+		network := endpoints.NewNetwork(d.shutdownCtx, endpoints.EndpointNetwork, server, *url, cert, extensionServer.DrainConnectionsTimeout)
 		networks[serverName] = network
 	}
 

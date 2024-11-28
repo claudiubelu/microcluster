@@ -2,11 +2,14 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/canonical/lxd/lxd/endpoints/listeners"
 	"github.com/canonical/lxd/lxd/util"
@@ -27,10 +30,12 @@ type Network struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	drainConnectionsTimeout time.Duration
 }
 
 // NewNetwork assigns an address, certificate, and server to the Network.
-func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Server, address api.URL, cert *shared.CertInfo) *Network {
+func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Server, address api.URL, cert *shared.CertInfo, drainConnTimeout time.Duration) *Network {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &Network{
@@ -41,6 +46,8 @@ func NewNetwork(ctx context.Context, endpointType EndpointType, server *http.Ser
 		server: server,
 		ctx:    ctx,
 		cancel: cancel,
+
+		drainConnectionsTimeout: drainConnTimeout,
 	}
 }
 
@@ -130,5 +137,31 @@ func (n *Network) Close() error {
 	logger.Info("Stopping REST API handler - closing https socket", logger.Ctx{"address": n.listener.Addr()})
 	n.cancel()
 
-	return n.listener.Close()
+	// .Close() will mean that we'll no longer accept connections.
+	if err := n.listener.Close(); err != nil {
+		return err
+	}
+
+	// Configured not to drain connections. Close them.
+	if n.drainConnectionsTimeout == 0 {
+		err := n.server.Close()
+		if errors.Is(err, syscall.EINVAL) {
+			return nil
+		}
+		return err
+	}
+
+	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
+	cctx, cancel := context.WithTimeout(context.Background(), n.drainConnectionsTimeout)
+	defer cancel()
+	if err := n.server.Shutdown(cctx); err != nil {
+		logger.Error("Failed to gracefully shutdown network server", logger.Ctx{"err": err})
+		if closeErr := n.server.Close(); closeErr != nil {
+			logger.Error("Failed to close network server", logger.Ctx{"err": closeErr})
+			return fmt.Errorf("Encountered error while closing network server: %w, after failing to gracefully shutdown the server: %w", closeErr, err)
+		}
+
+		return err
+	}
+	return nil
 }
