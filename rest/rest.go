@@ -2,6 +2,7 @@ package rest
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/canonical/lxd/lxd/response"
 
@@ -65,4 +66,8 @@ type Server struct {
 
 	// Resources is the list of resources offered by this server.
 	Resources []Resources
+
+	// DrainConnectionsTimeout is the amount of time to allow for all connections to drain when shutting down.
+	// If it's 0, the connections are not drained when shutting down.
+	DrainConnectionsTimeout time.Duration
 }
