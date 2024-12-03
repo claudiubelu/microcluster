@@ -237,7 +237,10 @@ func (d *Daemon) Run(ctx context.Context, stateDir string, args Args) error {
 }
 
 func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterval time.Duration, schemaExtensions []schema.Update, apiExtensions []string, hooks *state.Hooks) error {
-	d.applyHooks(hooks)
+	err := d.applyHooks(hooks)
+	if err != nil {
+		return err
+	}
 
 	// Register smart error mappings.
 	// Those need to be set proactively as they aren't anymore set by default.
@@ -248,7 +251,6 @@ func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterva
 		http.StatusServiceUnavailable: {driver.ErrNoAvailableLeader},
 	})
 
-	var err error
 	name, err := os.Hostname()
 	if err != nil {
 		return fmt.Errorf("Failed to assign default system name: %w", err)
@@ -350,11 +352,14 @@ func (d *Daemon) init(listenAddress string, socketGroup string, heartbeatInterva
 	return nil
 }
 
-func (d *Daemon) applyHooks(hooks *state.Hooks) {
+func (d *Daemon) applyHooks(hooks *state.Hooks) error {
 	// Apply a no-op hooks for any missing hooks.
 	noOpHook := func(ctx context.Context, s state.State) error { return nil }
 	noOpRemoveHook := func(ctx context.Context, s state.State, force bool) error { return nil }
 	noOpInitHook := func(ctx context.Context, s state.State, initConfig map[string]string) error { return nil }
+	noOpGenericInitHook := func(ctx context.Context, s state.State, bootstrap bool, initConfig map[string]string) error {
+		return nil
+	}
 	noOpConfigHook := func(ctx context.Context, s state.State, config types.DaemonConfig) error { return nil }
 	noOpNewMemberHook := func(ctx context.Context, s state.State, newMember types.ClusterMemberLocal) error { return nil }
 
@@ -364,8 +369,19 @@ func (d *Daemon) applyHooks(hooks *state.Hooks) {
 		d.hooks = *hooks
 	}
 
+	// PreBootstrap is deprecated and replaced by PreInit, so unset it if PreInit is set.
+	// nolint:staticcheck
+	if d.hooks.PreInit != nil && d.hooks.PreBootstrap != nil {
+		return fmt.Errorf("PreBootstrap hook is deprecated and cannot be defined if PreInit hook is defined")
+	}
+
+	// nolint:staticcheck
 	if d.hooks.PreBootstrap == nil {
 		d.hooks.PreBootstrap = noOpInitHook
+	}
+
+	if d.hooks.PreInit == nil {
+		d.hooks.PreInit = noOpGenericInitHook
 	}
 
 	if d.hooks.PostBootstrap == nil {
@@ -403,6 +419,8 @@ func (d *Daemon) applyHooks(hooks *state.Hooks) {
 	if d.hooks.OnDaemonConfigUpdate == nil {
 		d.hooks.OnDaemonConfigUpdate = noOpConfigHook
 	}
+
+	return nil
 }
 
 func (d *Daemon) reloadIfBootstrapped() error {
@@ -431,7 +449,7 @@ func (d *Daemon) reloadIfBootstrapped() error {
 		return fmt.Errorf("Failed to retrieve daemon configuration yaml: %w", err)
 	}
 
-	err = d.StartAPI(d.shutdownCtx, false, nil, nil)
+	err = d.StartAPI(d.shutdownCtx, false, nil)
 	if err != nil {
 		return err
 	}
@@ -499,27 +517,21 @@ func (d *Daemon) initServer(resources ...rest.Resources) *http.Server {
 	}
 }
 
+// setConfig applies and commits to memory the supplied daemon configuration.
+func (d *Daemon) setConfig(newConfig trust.Location) error {
+	d.config.SetAddress(newConfig.Address)
+	d.config.SetName(newConfig.Name)
+
+	// Write the latest config to disk.
+	return d.config.Write()
+}
+
 // StartAPI starts up the admin and consumer APIs, and generates a cluster cert
 // if we are bootstrapping the first node.
-func (d *Daemon) StartAPI(ctx context.Context, bootstrap bool, initConfig map[string]string, newConfig *trust.Location, joinAddresses ...string) error {
-	if newConfig != nil {
-		d.config.SetAddress(newConfig.Address)
-		d.config.SetName(newConfig.Name)
-
-		// Write the latest config to disk.
-		err := d.config.Write()
-		if err != nil {
-			return err
-		}
-	} else {
-		err := d.config.Load()
-		if err != nil {
-			return err
-		}
-	}
-
+func (d *Daemon) StartAPI(ctx context.Context, bootstrap bool, initConfig map[string]string, joinAddresses ...string) error {
 	if bootstrap {
 		ctx, cancel := context.WithCancel(ctx)
+		// nolint:staticcheck
 		err := d.hooks.PreBootstrap(ctx, d.State(), initConfig)
 		cancel()
 		if err != nil {
@@ -1089,6 +1101,7 @@ func (d *Daemon) State() state.State {
 		Hooks:                    &d.hooks,
 		Context:                  d.shutdownCtx,
 		ReadyCh:                  d.ReadyChan,
+		SetConfig:                d.setConfig,
 		StartAPI:                 d.StartAPI,
 		Extensions:               d.Extensions,
 		Endpoints:                d.endpoints,
