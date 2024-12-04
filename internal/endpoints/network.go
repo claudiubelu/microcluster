@@ -2,13 +2,11 @@ package endpoints
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/canonical/lxd/lxd/endpoints/listeners"
@@ -129,7 +127,7 @@ func (n *Network) Serve() {
 }
 
 // Close the listener.
-func (n *Network) Close() error {
+func (n *Network) Close(lazyShutdown bool) error {
 	if n.listener == nil {
 		return nil
 	}
@@ -142,26 +140,5 @@ func (n *Network) Close() error {
 		return err
 	}
 
-	// Configured not to drain connections. Close them.
-	if n.drainConnectionsTimeout == 0 {
-		err := n.server.Close()
-		if errors.Is(err, syscall.EINVAL) {
-			return nil
-		}
-		return err
-	}
-
-	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
-	cctx, cancel := context.WithTimeout(context.Background(), n.drainConnectionsTimeout)
-	defer cancel()
-	if err := n.server.Shutdown(cctx); err != nil {
-		logger.Error("Failed to gracefully shutdown network server", logger.Ctx{"err": err})
-		if closeErr := n.server.Close(); closeErr != nil {
-			logger.Error("Failed to close network server", logger.Ctx{"err": closeErr})
-			return fmt.Errorf("Encountered error while closing network server: %w, after failing to gracefully shutdown the server: %w", closeErr, err)
-		}
-
-		return err
-	}
-	return nil
+	return shutdownServer(n.ctx, n.server, n.drainConnectionsTimeout, lazyShutdown)
 }

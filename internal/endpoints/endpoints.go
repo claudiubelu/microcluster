@@ -26,7 +26,7 @@ func (e *Endpoints) Up() error {
 	err := e.up(e.listeners)
 	if err != nil {
 		// Attempt to call Down() in case something actually got brought up.
-		_ = e.Down()
+		_ = e.Down(false)
 
 		return err
 	}
@@ -97,7 +97,7 @@ func (e *Endpoints) up(listeners map[string]Endpoint) error {
 }
 
 // Down closes all of the configured listeners, or any for the type specifically supplied.
-func (e *Endpoints) Down(types ...EndpointType) error {
+func (e *Endpoints) Down(lazyShutdown bool, types ...EndpointType) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -110,7 +110,7 @@ func (e *Endpoints) Down(types ...EndpointType) error {
 		}
 
 		if types == nil || remove {
-			err := endpoint.Close()
+			err := endpoint.Close(lazyShutdown)
 			if err != nil {
 				return err
 			}
@@ -130,7 +130,7 @@ func (e *Endpoints) DownByName(name string) error {
 
 	for endpointName, endpoint := range e.listeners {
 		if endpointName == name {
-			err := endpoint.Close()
+			err := endpoint.Close(false)
 			if err != nil {
 				return err
 			}

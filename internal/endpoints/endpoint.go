@@ -4,7 +4,7 @@ package endpoints
 type Endpoint interface {
 	Listen() error
 	Serve()
-	Close() error
+	Close(lazyShutdown bool) error
 	Type() EndpointType
 }
 
