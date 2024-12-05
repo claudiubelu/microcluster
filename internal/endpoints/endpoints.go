@@ -143,6 +143,28 @@ func (e *Endpoints) DownByName(name string) error {
 	return nil
 }
 
+// Shutdown closes all of the configured listeners and their servers.
+func (e *Endpoints) Shutdown() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for name, endpoint := range e.listeners {
+		err := endpoint.Close()
+		if err != nil {
+			return err
+		}
+		err = endpoint.ShutdownServer()
+		if err != nil {
+			return err
+		}
+
+		// Delete the stopped endpoint from the slice.
+		delete(e.listeners, name)
+	}
+
+	return nil
+}
+
 // List returns a list of already added endpoints.
 func (e *Endpoints) List(types ...EndpointType) map[string]Endpoint {
 	e.mu.Lock()

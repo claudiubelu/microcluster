@@ -139,6 +139,10 @@ func NewDaemon(project string) *Daemon {
 			if err != nil {
 				return err
 			}
+			err = d.endpoints.Shutdown()
+			if err != nil {
+				return nil
+			}
 		}
 
 		return dqliteErr
@@ -1103,6 +1107,9 @@ func (d *Daemon) State() state.State {
 			}
 
 			return d.endpoints.Down()
+		},
+		ShutdownServers: func() error {
+			return d.endpoints.Shutdown()
 		},
 	}
 
