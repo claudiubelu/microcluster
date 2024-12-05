@@ -218,13 +218,13 @@ func joinWithToken(state state.State, r *http.Request, req *internalTypes.Contro
 		cert, err := shared.GetRemoteCertificate(url.String(), "")
 		if err != nil {
 			logger.Warn("Failed to get certificate of cluster member", logger.Ctx{"address": url.String(), "error": err})
+			lastErr = err
 			continue
 		}
 
 		fingerprint := shared.CertFingerprint(cert)
 		if fingerprint != token.Fingerprint {
-			logger.Warn("Cluster certificate token does not match that of cluster member", logger.Ctx{"address": url.String(), "fingerprint": fingerprint, "expected": token.Fingerprint})
-			continue
+			return nil, fmt.Errorf("Cluster certificate token does not match that of cluster member. Expected: %q, actual: %q", fingerprint, token.Fingerprint)
 		}
 
 		d, err := internalClient.New(*url, state.ServerCert(), cert, false)
