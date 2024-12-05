@@ -2,12 +2,14 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/canonical/lxd/shared"
@@ -112,7 +114,7 @@ func (s *Socket) Serve() {
 }
 
 // Close the Socket's listener.
-func (s *Socket) Close(lazyShutdown bool) error {
+func (s *Socket) Close() error {
 	if s.listener == nil {
 		return nil
 	}
@@ -125,7 +127,27 @@ func (s *Socket) Close(lazyShutdown bool) error {
 		return err
 	}
 
-	return shutdownServer(s.ctx, s.server, s.drainConnectionsTimeout, lazyShutdown)
+	// Configured not to drain connections. Close them.
+	if s.drainConnectionsTimeout == 0 {
+		err := s.server.Close()
+		if errors.Is(err, syscall.EINVAL) {
+			return nil
+		}
+		return err
+	}
+
+	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
+	cctx, cancel := context.WithTimeout(context.Background(), s.drainConnectionsTimeout)
+	defer cancel()
+	if err := s.server.Shutdown(cctx); err != nil {
+		logger.Error("Failed to gracefully shutdown socket server", logger.Ctx{"err": err})
+		if closeErr := s.server.Close(); closeErr != nil {
+			logger.Error("Failed to close socket server", logger.Ctx{"err": closeErr})
+			return fmt.Errorf("Encountered error while closing socket server: %w, after failing to gracefully shutdown the server: %w", closeErr, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // Remove any stale socket file at the given path.

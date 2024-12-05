@@ -135,7 +135,7 @@ func NewDaemon(project string) *Daemon {
 		}
 
 		if d.endpoints != nil {
-			err := d.endpoints.Down(false)
+			err := d.endpoints.Down()
 			if err != nil {
 				return err
 			}
@@ -550,7 +550,7 @@ func (d *Daemon) StartAPI(ctx context.Context, bootstrap bool, initConfig map[st
 
 	d.extensionServersMu.RUnlock()
 
-	err = d.endpoints.Down(false, endpoints.EndpointNetwork)
+	err = d.endpoints.Down(endpoints.EndpointNetwork)
 	if err != nil {
 		return err
 	}
@@ -1102,7 +1102,7 @@ func (d *Daemon) State() state.State {
 				return err
 			}
 
-			return d.endpoints.Down(true)
+			return d.endpoints.Down()
 		},
 	}
 
