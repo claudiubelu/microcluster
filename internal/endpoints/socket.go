@@ -2,14 +2,12 @@ package endpoints
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/user"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/canonical/lxd/shared"
@@ -123,31 +121,13 @@ func (s *Socket) Close() error {
 	s.cancel()
 
 	// .Close() will mean that we'll no longer accept connections.
-	if err := s.listener.Close(); err != nil {
-		return err
-	}
+	// It does not shutdown the server, or its currently accepted connections.
+	return s.listener.Close()
+}
 
-	// Configured not to drain connections. Close them.
-	if s.drainConnectionsTimeout == 0 {
-		err := s.server.Close()
-		if errors.Is(err, syscall.EINVAL) {
-			return nil
-		}
-		return err
-	}
-
-	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
-	cctx, cancel := context.WithTimeout(context.Background(), s.drainConnectionsTimeout)
-	defer cancel()
-	if err := s.server.Shutdown(cctx); err != nil {
-		logger.Error("Failed to gracefully shutdown socket server", logger.Ctx{"err": err})
-		if closeErr := s.server.Close(); closeErr != nil {
-			logger.Error("Failed to close socket server", logger.Ctx{"err": closeErr})
-			return fmt.Errorf("Encountered error while closing socket server: %w, after failing to gracefully shutdown the server: %w", closeErr, err)
-		}
-		return err
-	}
-	return nil
+// ShutdownServer shuts down the endpoint's server.
+func (s *Socket) ShutdownServer() error {
+	return shutdownServer(s.ctx, s.server, s.drainConnectionsTimeout)
 }
 
 // Remove any stale socket file at the given path.

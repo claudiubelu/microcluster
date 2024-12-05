@@ -370,6 +370,13 @@ func resetClusterMember(ctx context.Context, s state.State, force bool) (reExec 
 	reExec = func() {
 		<-ctx.Done() // Wait until request has finished.
 
+		// Shutdown the servers after the request that initiated the reset to finish, so we don't
+		// timeout while draining the rest of the connections.
+		err := intState.ShutdownServers()
+		if err != nil {
+			logger.Error("Failed shutting down servers", logger.Ctx{"err": err})
+		}
+
 		// Wait until we can acquire the lock. This way if another request is holding the lock we won't
 		// replace/stop the LXD daemon until that request has finished.
 		clusterDisableMu.Lock()

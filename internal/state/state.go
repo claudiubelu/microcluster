@@ -90,7 +90,10 @@ type InternalState struct {
 	// StopListeners stops the network listeners and the fsnotify listener.
 	StopListeners func() error
 
-	// Stop fully stops the daemon, its database, and all listeners.
+	// ShutdownServers stops the servers serving the endpoints.
+	ShutdownServers func() error
+
+	// Stop fully stops the daemon, its database, all listeners, and all servers.
 	Stop func() (exit func(), stopErr error)
 
 	// Runtime extensions.
