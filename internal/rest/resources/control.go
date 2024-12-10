@@ -151,18 +151,21 @@ func controlPost(state state.State, r *http.Request) response.Response {
 		}
 	}
 
+	var joinAddrs []string
+	var localClusterMember *trust.Remote
 	if req.JoinToken != "" {
-		joinInfo, err = joinWithToken(state, r, req)
+		joinInfo, localClusterMember, err = joinWithToken(state, r, req)
 		if err != nil {
 			return response.SmartError(err)
 		}
 
-		reverter.Success()
-
-		return response.EmptySyncResponse
+		joinAddrs, err = setupLocalMember(state, localClusterMember, joinInfo)
+		if err != nil {
+			return response.SmartError(err)
+		}
 	}
 
-	err = intState.StartAPI(r.Context(), req.Bootstrap, req.InitConfig)
+	err = intState.StartAPI(r.Context(), req.Bootstrap, req.InitConfig, joinAddrs...)
 	if err != nil {
 		return response.SmartError(err)
 	}
@@ -172,20 +175,20 @@ func controlPost(state state.State, r *http.Request) response.Response {
 	return response.EmptySyncResponse
 }
 
-func joinWithToken(state state.State, r *http.Request, req *internalTypes.Control) (*internalTypes.TokenResponse, error) {
+func joinWithToken(state state.State, r *http.Request, req *internalTypes.Control) (*internalTypes.TokenResponse, *trust.Remote, error) {
 	token, err := internalTypes.DecodeToken(req.JoinToken)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	serverCert, err := state.ServerCert().PublicKeyX509()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse server certificate when bootstrapping API: %w", err)
+		return nil, nil, fmt.Errorf("Failed to parse server certificate when bootstrapping API: %w", err)
 	}
 
 	intState, err := internalState.ToInternal(state)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Add the local node to the list of clusterMembers.
@@ -224,12 +227,12 @@ func joinWithToken(state state.State, r *http.Request, req *internalTypes.Contro
 
 		fingerprint := shared.CertFingerprint(cert)
 		if fingerprint != token.Fingerprint {
-			return nil, fmt.Errorf("Cluster certificate token does not match that of cluster member. Expected: %q, actual: %q", fingerprint, token.Fingerprint)
+			return nil, nil, fmt.Errorf("Cluster certificate token does not match that of cluster member. Expected: %q, actual: %q", fingerprint, token.Fingerprint)
 		}
 
 		d, err := internalClient.New(*url, state.ServerCert(), cert, false)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		joinInfo, err = internalClient.AddClusterMember(context.Background(), d, newClusterMember)
@@ -242,11 +245,15 @@ func joinWithToken(state state.State, r *http.Request, req *internalTypes.Contro
 	}
 
 	if joinInfo == nil {
-		return nil, fmt.Errorf("%d join attempts were unsuccessful. Last error: %w", len(token.JoinAddresses), lastErr)
+		return nil, nil, fmt.Errorf("%d join attempts were unsuccessful. Last error: %w", len(token.JoinAddresses), lastErr)
 	}
 
+	return joinInfo, &localClusterMember, nil
+}
+
+func setupLocalMember(state state.State, localClusterMember *trust.Remote, joinInfo *internalTypes.TokenResponse) ([]string, error) {
 	// Set up cluster certificate.
-	err = util.WriteCert(state.FileSystem().StateDir, string(types.ClusterCertificateName), []byte(joinInfo.ClusterCert.String()), []byte(joinInfo.ClusterKey), nil)
+	err := util.WriteCert(state.FileSystem().StateDir, string(types.ClusterCertificateName), []byte(joinInfo.ClusterCert.String()), []byte(joinInfo.ClusterKey), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +273,7 @@ func joinWithToken(state state.State, r *http.Request, req *internalTypes.Contro
 	}
 
 	joinAddrs := types.AddrPorts{}
-	clusterMembers := make([]trust.Remote, 0, len(joinInfo.ClusterMembers))
+	clusterMembers := make([]trust.Remote, 0, len(joinInfo.ClusterMembers)+1)
 	for _, clusterMember := range joinInfo.ClusterMembers {
 		remote := trust.Remote{
 			Location:    trust.Location{Name: clusterMember.Name, Address: clusterMember.Address},
@@ -277,17 +284,11 @@ func joinWithToken(state state.State, r *http.Request, req *internalTypes.Contro
 		clusterMembers = append(clusterMembers, remote)
 	}
 
-	clusterMembers = append(clusterMembers, localClusterMember)
+	clusterMembers = append(clusterMembers, *localClusterMember)
 	err = state.Remotes().Add(state.FileSystem().TrustDir, clusterMembers...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Start the HTTPS listeners and join Dqlite.
-	err = intState.StartAPI(r.Context(), false, req.InitConfig, joinAddrs.Strings()...)
-	if err != nil {
-		return nil, err
-	}
-
-	return joinInfo, nil
+	return joinAddrs.Strings(), nil
 }
