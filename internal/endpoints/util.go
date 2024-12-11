@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
-	"syscall"
 	"time"
 
 	"github.com/canonical/lxd/shared/logger"
@@ -17,7 +17,7 @@ func shutdownServer(ctx context.Context, server *http.Server, timeout time.Durat
 	// If the given timeout is 0, force the shutdown.
 	if timeout == 0 {
 		err := server.Close()
-		if errors.Is(err, syscall.EINVAL) {
+		if errors.Is(err, net.ErrClosed) {
 			return nil
 		}
 		return err
@@ -26,7 +26,8 @@ func shutdownServer(ctx context.Context, server *http.Server, timeout time.Durat
 	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
 	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	err := server.Shutdown(shutdownCtx)
+	if err != nil {
 		logger.Error("Failed to gracefully shutdown server", logger.Ctx{"err": err})
 		if closeErr := server.Close(); closeErr != nil {
 			logger.Error("Failed to close server", logger.Ctx{"err": closeErr})

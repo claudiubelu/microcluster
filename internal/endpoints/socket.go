@@ -111,22 +111,25 @@ func (s *Socket) Serve() {
 	}()
 }
 
-// Close the Socket's listener.
+// Close the listener and server.
+// Will attempt to close the server gracefully, if configured with a drain connections timeout.
+// Note that graceful shutdown will timeout if the connections do not finish (e.g.: a request caused the server
+// to Close the endpoints on the same goroutine).
 func (s *Socket) Close() error {
 	if s.listener == nil {
 		return nil
 	}
 
 	logger.Info("Stopping REST API handler - closing socket", logger.Ctx{"socket": s.listener.Addr()})
-	s.cancel()
+	defer s.cancel()
 
 	// .Close() will mean that we'll no longer accept connections.
 	// It does not shutdown the server, or its currently accepted connections.
-	return s.listener.Close()
-}
+	err := s.listener.Close()
+	if err != nil {
+		return err
+	}
 
-// ShutdownServer shuts down the endpoint's server.
-func (s *Socket) ShutdownServer() error {
 	return shutdownServer(s.ctx, s.server, s.drainConnectionsTimeout)
 }
 

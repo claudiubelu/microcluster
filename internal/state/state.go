@@ -87,11 +87,8 @@ type InternalState struct {
 	// ReloadCert reloads the given keypair from the state directory.
 	ReloadCert func(name types.CertificateName) error
 
-	// StopListeners stops the network listeners and the fsnotify listener.
+	// StopListeners stops the network listeners and servers, and the fsnotify listener.
 	StopListeners func() error
-
-	// ShutdownServers stops the servers serving the endpoints.
-	ShutdownServers func() error
 
 	// Stop fully stops the daemon, its database, all listeners, and all servers.
 	Stop func() (exit func(), stopErr error)
