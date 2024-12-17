@@ -2,6 +2,7 @@ package endpoints
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -113,14 +114,14 @@ func (n *Network) Serve() {
 		case <-n.ctx.Done():
 			logger.Infof("Received shutdown signal - aborting https socket server startup")
 		default:
+			// server.Serve always returns a non-nil error.
+			// http.ErrServerClosed is returned after server.Shutdown or server.Close.
+			// net.ErrClosed is returned if the listener is closed.
 			err := n.server.Serve(n.listener)
-			if err != nil {
-				select {
-				case <-n.ctx.Done():
-					logger.Infof("Received shutdown signal - aborting https socket server startup")
-				default:
-					logger.Error("Failed to start server", logger.Ctx{"err": err})
-				}
+			if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+				logger.Infof("Received shutdown signal - stopped serving https socket listener")
+			} else {
+				logger.Error("Failed to start server", logger.Ctx{"err": err})
 			}
 		}
 	}()
