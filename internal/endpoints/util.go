@@ -13,7 +13,7 @@ import (
 
 // shutdownServer will shutdown the given server.
 // If the given timeout is 0, it will forcefully shut it down. Otherwise, it will gracefully shut it down.
-func shutdownServer(ctx context.Context, server *http.Server, timeout time.Duration) error {
+func shutdownServer(server *http.Server, timeout time.Duration) error {
 	// If the given timeout is 0, force the shutdown.
 	if timeout == 0 {
 		err := server.Close()
@@ -24,7 +24,7 @@ func shutdownServer(ctx context.Context, server *http.Server, timeout time.Durat
 	}
 
 	// server.Shutdown will gracefully stop the server, allowing existing requests to finish.
-	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	err := server.Shutdown(shutdownCtx)
 	if err != nil {

@@ -136,7 +136,7 @@ func (n *Network) Close() error {
 	}
 
 	logger.Info("Stopping REST API handler - closing https socket", logger.Ctx{"address": n.listener.Addr()})
-	defer n.cancel()
+	n.cancel()
 
 	// .Close() will mean that we'll no longer accept connections.
 	// It does not shutdown the server, or its currently accepted connections.
@@ -145,5 +145,5 @@ func (n *Network) Close() error {
 		return err
 	}
 
-	return shutdownServer(n.ctx, n.server, n.drainConnectionsTimeout)
+	return shutdownServer(n.server, n.drainConnectionsTimeout)
 }
