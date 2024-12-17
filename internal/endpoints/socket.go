@@ -121,7 +121,7 @@ func (s *Socket) Close() error {
 	}
 
 	logger.Info("Stopping REST API handler - closing socket", logger.Ctx{"socket": s.listener.Addr()})
-	s.cancel()
+	defer s.cancel()
 
 	// .Close() will mean that we'll no longer accept connections.
 	// It does not shutdown the server, or its currently accepted connections.
@@ -130,7 +130,7 @@ func (s *Socket) Close() error {
 		return err
 	}
 
-	return shutdownServer(s.server, s.drainConnectionsTimeout)
+	return shutdownServer(s.ctx, s.server, s.drainConnectionsTimeout)
 }
 
 // Remove any stale socket file at the given path.
