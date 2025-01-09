@@ -352,18 +352,13 @@ func resetClusterMember(ctx context.Context, s state.State, force bool) (reExec 
 		return nil, err
 	}
 
-	err = intState.InternalDatabase.Stop()
-	if err != nil && !force {
-		return nil, fmt.Errorf("Failed shutting down database: %w", err)
-	}
-
-	err = os.RemoveAll(s.FileSystem().StateDir)
-	if err != nil && !force {
-		return nil, fmt.Errorf("Failed to remove the s directory: %w", err)
-	}
-
 	reExec = func() {
 		<-ctx.Done() // Wait until request has finished.
+
+		err = intState.InternalDatabase.Stop()
+		if err != nil && !force {
+			logger.Error("Failed shutting down database", logger.Ctx{"err": err})
+		}
 
 		// NOTE(claudiub): In the case we fail to bootstrap / join the cluster, or if we remove the node
 		// from the cluster, we'll be resetting the node's cluster membership. This includes closing the
@@ -378,6 +373,11 @@ func resetClusterMember(ctx context.Context, s state.State, force bool) (reExec 
 		err = intState.StopListeners()
 		if err != nil && !force {
 			logger.Error("Failed shutting down listeners", logger.Ctx{"err": err})
+		}
+
+		err = os.RemoveAll(s.FileSystem().StateDir)
+		if err != nil && !force {
+			logger.Error("Failed to remove the state directory", logger.Ctx{"err": err})
 		}
 
 		// Wait until we can acquire the lock. This way if another request is holding the lock we won't
