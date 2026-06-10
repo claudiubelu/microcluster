@@ -439,7 +439,7 @@ func clusterMemberDelete(s types.State, r *http.Request) types.Response {
 		addr = remote.Address.String()
 	} else if !remotePresent && addr == "" {
 		// If the remote is not present in the truststore and no address is provided, we cannot proceed.
-		return types.SmartError(fmt.Errorf("Cluster member %q not found in truststore; please provide a node address", name))
+		return types.NotFound(fmt.Errorf("Cluster member %q not found in truststore; please provide a node address", name))
 	} else if remotePresent && addr != "" && remote.Address.String() != addr {
 		// Reject if provided address doesn't match the truststore address for this remote name.
 		return types.SmartError(fmt.Errorf("Provided address %q does not match the address %q of the remote with name %q", addr, remote.Address.String(), name))
@@ -568,7 +568,7 @@ func clusterMemberDelete(s types.State, r *http.Request) types.Response {
 
 	// If member not found in dqlite and not in database, return error.
 	if index < 0 && !memberInDB {
-		return types.SmartError(fmt.Errorf("Cluster member %q with address %q not found in dqlite or database", name, addr))
+		return types.NotFound(fmt.Errorf("Cluster member %q with address %q not found in dqlite or database", name, addr))
 	}
 
 	numPending := 0
