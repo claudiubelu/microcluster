@@ -561,6 +561,13 @@ func clusterMemberDelete(s types.State, r *http.Request) types.Response {
 	memberInDB := false
 	for _, m := range clusterMembers {
 		if m.Address == addr {
+			// In the fallback path (!remotePresent), the name was not validated against
+			// the truststore. Reject if the DB record at this address belongs to a
+			// different member, to prevent silently deleting the wrong node.
+			if !remotePresent && m.Name != name {
+				return types.SmartError(fmt.Errorf("Address %q belongs to cluster member %q, not %q", addr, m.Name, name))
+			}
+
 			memberInDB = true
 			break
 		}
