@@ -605,7 +605,7 @@ func clusterMemberDelete(s types.State, r *http.Request) types.Response {
 	}
 
 	// If we are the leader and removing ourselves, reassign the leader role and perform the removal from there.
-	if remotePresent && addr == leaderInfo.Address {
+	if addr == leaderInfo.Address {
 		otherNodes := []uint64{}
 		for _, node := range info {
 			if node.Address != addr && node.Role == dqliteClient.Voter {
