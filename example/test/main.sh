@@ -447,8 +447,39 @@ test_membership_consistency() {
   # Bootstrap first member (daemon already running from new_systems)
   microctl --state-dir "${test_dir}/c1" init "c1" 127.0.0.1:9001 --bootstrap
 
-  # Join second member (daemon already running)
+  # A join failing right after the bootstrap, while all members are still PENDING, must be
+  # rolled back on the cluster too. An invalid schema patch makes the join of c2 fail after
+  # dqlite has already added it.
+  echo "  -> Testing failed join of c2 while all members are still PENDING"
   token_c2=$(microctl --state-dir "${test_dir}/c1" tokens add "c2")
+  echo "INTENTIONALLY INVALID SQL STATEMENT;" > "${test_dir}/c2/patch.global.sql"
+  if microctl --state-dir "${test_dir}/c2" init "c2" 127.0.0.1:9002 --token "${token_c2}"; then
+    echo "ERROR: Member c2 should have failed to join"
+    exit 1
+  fi
+
+  retries=0
+  while [ "$(microctl --state-dir "${test_dir}/c1" cluster list -f csv | wc -l)" != "1" ]; do
+    retries=$((retries + 1))
+    if [ "${retries}" -gt 15 ]; then
+      echo "ERROR: Member c2 is still present on the cluster after its failed join"
+      microctl --state-dir "${test_dir}/c1" cluster list
+      exit 1
+    fi
+
+    sleep 2
+  done
+
+  # The cleanup resets c2, so wait for it to come back before joining it again.
+  microctl --state-dir "${test_dir}/c2" waitready --timeout 30
+  rm -f "${test_dir}/c2/patch.global.sql"
+
+  # Join second member (daemon already running)
+  if ! token_c2=$(microctl --state-dir "${test_dir}/c1" tokens add "c2"); then
+    echo "ERROR: Cluster membership is inconsistent after the failed join of c2"
+    exit 1
+  fi
+
   microctl --state-dir "${test_dir}/c2" init "c2" 127.0.0.1:9002 --token "${token_c2}"
 
   # Start third member and join cluster
