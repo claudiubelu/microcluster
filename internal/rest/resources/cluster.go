@@ -575,13 +575,20 @@ func clusterMemberDelete(s types.State, r *http.Request) types.Response {
 	}
 
 	numPending := 0
+	memberPending := false
 	for _, clusterMember := range clusterMembers {
 		if clusterMember.Role == cluster.Pending {
 			numPending++
+
+			if clusterMember.Address == addr {
+				memberPending = true
+			}
 		}
 	}
 
-	if len(clusterMembers)-numPending < 1 {
+	// Allow the forced removal of a pending member regardless, e.g. to clean up after a failed join
+	// right after the cluster was bootstrapped, while all members are still pending.
+	if (!force || !memberPending) && len(clusterMembers)-numPending < 1 {
 		return types.BadRequest(fmt.Errorf("Cannot remove cluster members, there are no remaining non-pending members"))
 	}
 
